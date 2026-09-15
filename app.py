@@ -1,4 +1,5 @@
 import sqlite3
+import token
 from flask import Flask, request, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
@@ -103,7 +104,7 @@ def login():
     payload = {
         "id": user["id"],
         "username": user["username"],
-        "exp": datetime.utcnow() + timedelta(hours=1),
+        "exp": datetime.utcnow() + timedelta(seconds=10),
     }
 
     # sign the token
@@ -115,3 +116,39 @@ def login():
             "token": token,
         }
     ), 200
+
+
+
+
+
+@app.route("/secret-note", methods=["POST"])
+def secret_note():
+    auth_header = request.headers.get("Authorization")
+    if auth_header is None:
+        return {"error": "Authorization header required"}, 401
+
+    parts = auth_header.split(" ")
+    if len(parts) != 2 or parts[0] != "Bearer":
+        return {"error": "Invalid Authorization header format"}, 401
+
+    token = parts[1]
+
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+    except jwt.ExpiredSignatureError:
+        return {
+            "error": "token_expired",
+            "message": "Token expired. Please log in again."
+        }, 401
+    except jwt.InvalidTokenError:
+        return {
+            "error": "invalid_token",
+            "message": "Invalid token."
+        }, 401
+
+        return {"message": "You reached the secret zone!"}
+
+
+if __name__ == "__main__":
+    init_db()
+    app.run(debug=True)
