@@ -1,1 +1,10 @@
 .env 
+venv/
+__pycache__/
+*.py[cod]
+
+# local SQLite DBs
+*.db
+*.db.backup-*
+tiny-todo/
+curl

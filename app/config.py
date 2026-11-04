@@ -22,6 +22,7 @@ class Config:
     CACHE_DEFAULT_TIMEOUT = 10
     RATELIMIT_STORAGE_URI = "memory://"
     RATELIMIT_HEADERS_ENABLED = True
+    INTERNAL_SERVICE_TOKEN = os.environ.get("INTERNAL_SERVICE_TOKEN")
 
 
 # Development defaults to debug mode and a local database file.

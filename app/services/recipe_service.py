@@ -1,6 +1,39 @@
 from app.extensions import db
-from app.models import Recipe
+from app.models import Recipe, Tag
 from app.data.recipe_data import get_recipe_count
+
+
+def get_or_create_tags(tag_names):
+    tags = []
+    seen_names = set()
+
+    for name in tag_names or []:
+        normalized_name = name.strip()
+        if not normalized_name or normalized_name in seen_names:
+            continue
+        seen_names.add(normalized_name)
+
+        tag = Tag.query.filter_by(name=normalized_name).first()
+        if tag is None:
+            tag = Tag(name=normalized_name)
+            db.session.add(tag)
+        tags.append(tag)
+
+    return tags
+
+
+def create_recipe(title, ingredients, cook_time_minutes, user_id, notes=None, tag_names=None):
+    recipe = Recipe(
+        title=title,
+        ingredients=ingredients,
+        cook_time_minutes=cook_time_minutes,
+        notes=notes,
+        user_id=user_id,
+        tags=get_or_create_tags(tag_names),
+    )
+    db.session.add(recipe)
+    db.session.commit()
+    return recipe
 
 
 def get_recipe_count_info():

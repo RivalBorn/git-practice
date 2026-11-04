@@ -7,6 +7,7 @@ from app.config import DevelopmentConfig, ProductionConfig, TestingConfig
 from app.extensions import cache, db, limiter, migrate
 from app import models
 from app.routes.auth import auth_bp
+from app.routes.gateway import gateway_bp
 from app.routes.recipes import recipes_bp
 
 # Read local environment settings during module initialization.
@@ -17,12 +18,14 @@ routes = Blueprint("routes", __name__)
 
 
 # Build and configure a Flask application for the requested environment.
-def create_app(env_name="development", config_overrides=None):
+def create_app(env_name="development", config_overrides=None, service="all"):
     # Make values from a local .env file available to the app factory.
     load_dotenv()
 
     # Create the Flask application instance.
     app = Flask(__name__)
+    if service not in {"all", "gateway", "users", "recipes"}:
+        raise ValueError(f"Unsupported service: {service}")
 
     # Map supported environment names to their settings classes.
     config_map = {
@@ -35,6 +38,22 @@ def create_app(env_name="development", config_overrides=None):
     config_class = config_map.get(env_name, DevelopmentConfig)
     # Copy the selected class settings onto the Flask application.
     app.config.from_object(config_class)
+    app.config.setdefault(
+        "USERS_SERVICE_URL",
+        os.getenv("USERS_SERVICE_URL", "http://127.0.0.1:5001"),
+    )
+    app.config.setdefault(
+        "RECIPES_SERVICE_URL",
+        os.getenv("RECIPES_SERVICE_URL", "http://127.0.0.1:5002"),
+    )
+    app.config.setdefault(
+        "SLOW_SERVICE_URL",
+        os.getenv("SLOW_SERVICE_URL", "http://127.0.0.1:5001"),
+    )
+    app.config.setdefault(
+        "DOWNSTREAM_TIMEOUT_SECONDS",
+        float(os.getenv("DOWNSTREAM_TIMEOUT_SECONDS", "0.6")),
+    )
     if config_overrides:
         app.config.update(config_overrides)
 
@@ -71,10 +90,18 @@ def create_app(env_name="development", config_overrides=None):
     with app.app_context():
         event.listen(db.engine, "connect", enable_sqlite_foreign_keys)
 
-    # Register the new blueprints while retaining routes until they are moved.
-    app.register_blueprint(auth_bp, url_prefix="/")
-    app.register_blueprint(recipes_bp, url_prefix="/recipes")
-    app.register_blueprint(routes)
+    if service == "all":
+        app.register_blueprint(auth_bp, url_prefix="/")
+        app.register_blueprint(recipes_bp, url_prefix="/recipes")
+        app.register_blueprint(routes)
+    elif service == "gateway":
+        app.register_blueprint(gateway_bp)
+    elif service == "users":
+        app.register_blueprint(auth_bp, url_prefix="/")
+        app.register_blueprint(routes)
+    else:
+        app.register_blueprint(recipes_bp, url_prefix="/recipes")
+        app.register_blueprint(routes)
 
     @app.errorhandler(429)
     def rate_limit_exceeded(_error):
