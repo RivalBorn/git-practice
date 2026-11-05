@@ -5,11 +5,12 @@ and it trusts everyone. There is no authentication and no authorization yet.
 That is the point: you will add both, lesson by lesson, in Units 2 and 3.
 """
 
+import os
 import sqlite3
 
 from flask import Flask, g, jsonify, request
 
-DATABASE = "recipes.db"
+DATABASE = os.environ.get("DATABASE_PATH", "recipes.db")
 
 app = Flask(__name__)
 
