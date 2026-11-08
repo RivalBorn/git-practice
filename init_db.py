@@ -1,5 +1,6 @@
 """Create and seed recipes.db. Run once after cloning: python init_db.py"""
 
+import os
 import sqlite3
 
 SCHEMA = """
@@ -33,7 +34,8 @@ SEED = [
     ),
 ]
 
-connection = sqlite3.connect("recipes.db")
+database = os.environ.get("DATABASE_PATH", "recipes.db")
+connection = sqlite3.connect(database)
 connection.executescript(SCHEMA)
 existing = connection.execute("SELECT COUNT(*) FROM recipes").fetchone()[0]
 if existing == 0:
@@ -43,7 +45,7 @@ if existing == 0:
         SEED,
     )
     connection.commit()
-    print(f"Created recipes.db and seeded {len(SEED)} recipes.")
+    print(f"Created {database} and seeded {len(SEED)} recipes.")
 else:
-    print(f"recipes.db already has {existing} recipes - nothing to do.")
+    print(f"{database} already has {existing} recipes - nothing to do.")
 connection.close()

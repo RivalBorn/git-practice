@@ -14,6 +14,19 @@ python app.py
 
 Requires Python 3.10+ and Flask (`pip install -r requirements.txt`).
 
+## Run with Docker Compose
+
+Docker Compose builds the API image, initializes the SQLite database on first
+startup, and keeps the database in a named volume across container restarts.
+
+```
+docker compose up --build
+```
+
+The API is available at `http://localhost:8000`. To stop it, press `Ctrl+C`
+and run `docker compose down`. The `recipes-data` volume is retained; removing
+the volume with `docker compose down --volumes` deletes the database.
+
 ## Try it
 
 ```
