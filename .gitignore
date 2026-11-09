@@ -1,11 +1,19 @@
-.env 
+# Virtual environments
 venv/
-__pycache__/
-*.py[cod]
+.venv/
 
-# local SQLite DBs
+# Python caches
+__pycache__/
+*.pyc
+
+# Local databases - every clone builds its own
 *.db
 *.db.backup-*
+
+# Secrets - never commit these
+.env
+
+# Local data and course files
+data/
 tiny-todo/
 curl
-data/

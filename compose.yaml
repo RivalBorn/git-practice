@@ -1,0 +1,13 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
+    volumes:
+      - recipes-data:/data
+    restart: unless-stopped
+
+volumes:
+  recipes-data:
