@@ -8,7 +8,6 @@ from sqlalchemy.exc import IntegrityError
 from app import create_app
 from app.extensions import cache, db
 from app.models import Recipe, User
-from app.routes.recipes import list_recipes_for_user
 
 
 class DesignFeatureTests(unittest.TestCase):
@@ -90,58 +89,81 @@ class DesignFeatureTests(unittest.TestCase):
         response = self.client.get("/recipes", headers=self.headers)
         self.assertEqual(response.status_code, 200)
 
-    def test_recipe_list_cache_is_reused_and_invalidated_by_writes(self):
-        with patch(
-            "app.routes.recipes.list_recipes_for_user",
-            wraps=list_recipes_for_user,
-        ) as query:
-            response = self.client.get("/recipes", headers=self.headers)
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json, [])
+    def test_recipe_list_paginates_and_validates_per_page(self):
+        for title in ("Soup", "Salad", "Pasta"):
+            response = self.client.post(
+                "/recipes",
+                headers=self.headers,
+                json={
+                    "title": title,
+                    "ingredients": "test ingredients",
+                    "cook_time_minutes": 15,
+                },
+            )
+            self.assertEqual(response.status_code, 201)
 
-            response = self.client.get("/recipes", headers=self.headers)
-            self.assertEqual(response.json, [])
-            query.assert_called_once()
+        default_page = self.client.get("/recipes", headers=self.headers)
+        self.assertEqual(default_page.status_code, 200)
+        self.assertEqual(default_page.json["page"], 1)
+        self.assertEqual(default_page.json["per_page"], 5)
+        self.assertEqual(default_page.json["total"], 3)
+        self.assertEqual(default_page.json["pages"], 1)
+        self.assertEqual(len(default_page.json["recipes"]), 3)
 
-        response = self.client.post(
-            "/recipes",
-            headers=self.headers,
-            json={
-                "title": "Soup",
-                "ingredients": "Beans",
-                "cook_time_minutes": 30,
-                "notes": "Serve warm",
+        first_page = self.client.get(
+            "/recipes?page=1&per_page=2", headers=self.headers
+        )
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(
+            {
+                key: first_page.json[key]
+                for key in ("page", "per_page", "total", "pages")
+            },
+            {
+                "page": 1,
+                "per_page": 2,
+                "total": 3,
+                "pages": 2,
             },
         )
-        self.assertEqual(response.status_code, 201)
-        recipe_id = response.json["id"]
-
-        response = self.client.get("/recipes", headers=self.headers)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json[0]["notes"], "Serve warm")
-
-        response = self.client.put(
-            f"/recipes/{recipe_id}",
-            headers=self.headers,
-            json={
-                "title": "Bean Soup",
-                "ingredients": "Beans, water",
-                "cook_time_minutes": 35,
-                "notes": "Updated",
-            },
+        self.assertEqual(
+            [recipe["title"] for recipe in first_page.json["recipes"]],
+            ["Soup", "Salad"],
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json["notes"], "Updated")
 
-        response = self.client.get("/recipes", headers=self.headers)
-        self.assertEqual(response.json[0]["title"], "Bean Soup")
-
-        response = self.client.delete(
-            f"/recipes/{recipe_id}",
-            headers=self.headers,
+        last_page = self.client.get(
+            "/recipes?page=2&per_page=2", headers=self.headers
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(self.client.get("/recipes", headers=self.headers).json, [])
+        self.assertEqual(last_page.status_code, 200)
+        self.assertEqual(
+            [recipe["title"] for recipe in last_page.json["recipes"]],
+            ["Pasta"],
+        )
+        self.assertEqual(last_page.json["total"], 3)
+        self.assertEqual(last_page.json["pages"], 2)
+
+        beyond_end = self.client.get(
+            "/recipes?page=3&per_page=2", headers=self.headers
+        )
+        self.assertEqual(beyond_end.status_code, 200)
+        self.assertEqual(beyond_end.json["recipes"], [])
+        self.assertEqual(beyond_end.json["page"], 3)
+        self.assertEqual(beyond_end.json["total"], 3)
+        self.assertEqual(beyond_end.json["pages"], 2)
+
+        invalid_per_page = self.client.get(
+            "/recipes?per_page=0", headers=self.headers
+        )
+        self.assertEqual(invalid_per_page.status_code, 400)
+        self.assertEqual(
+            invalid_per_page.json, {"error": "invalid per_page"}
+        )
+
+        invalid_page = self.client.get(
+            "/recipes?page=0", headers=self.headers
+        )
+        self.assertEqual(invalid_page.status_code, 400)
+        self.assertEqual(invalid_page.json, {"error": "invalid page"})
 
     def test_registration_is_rate_limited(self):
         for attempt in range(5):

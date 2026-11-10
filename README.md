@@ -22,18 +22,51 @@ user endpoints until an administrator assigns them an owner.
 
 ## Run with Docker Compose
 
-Docker Compose builds the API image, initializes the SQLite database on first
-startup, and keeps the database in a named volume across container restarts.
+1. Clone the repository and enter its folder:
 
-```
-docker compose up --build
-```
+   ```
+   git clone https://github.com/RivalBorn/git-practice.git
+   cd git-practice
+   ```
 
-The API is available at `http://localhost:8000`. To stop it, press `Ctrl+C`
-and run `docker compose down`. The `recipes-data` volume is retained; removing
-the volume with `docker compose down --volumes` deletes the database.
-Set `JWT_SECRET_KEY` in the environment before starting Compose to keep tokens
-valid across container restarts.
+2. Create your local environment file:
+
+   ```
+   Copy-Item .env.example .env
+   ```
+
+   Edit `.env` and replace the `JWT_SECRET` placeholder with a strong random
+   secret. Keep `.env` private.
+
+3. Build and start the API and PostgreSQL:
+
+   ```
+   docker compose up --build
+   ```
+
+   The API container runs database migrations at startup. In another terminal,
+   you can also run them explicitly:
+
+   ```
+   docker compose exec api flask --app wsgi db upgrade
+   ```
+
+4. Check that the API responds at `http://localhost:8000/health`. To register
+   and log in, send JSON requests to `/register` and `/login`; use the returned
+   bearer token for protected recipe endpoints such as `/recipes`.
+
+5. Stop the stack with `Ctrl+C`, then run:
+
+   ```
+   docker compose down
+   ```
+
+   The `postgres-data` named volume keeps database contents when containers
+   are stopped or recreated. To delete the database too, run
+   `docker compose down --volumes`.
+
+The standalone `python recipe_api.py` command above remains the SQLite-based
+API; Compose runs the Flask application in `app/`.
 
 ## Try it
 

@@ -4,10 +4,27 @@ services:
     ports:
       - "8000:8000"
     environment:
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
-    volumes:
-      - recipes-data:/data
+      APP_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in .env}
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: recipe_user
+      POSTGRES_PASSWORD: recipe_password
+      POSTGRES_DB: recipe_dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U recipe_user -d recipe_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
 volumes:
-  recipes-data:
+  postgres-data:

@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from flask import Blueprint, Flask, jsonify
+from flask import Flask, jsonify
 from sqlalchemy import event
 
 from app.config import DevelopmentConfig, ProductionConfig, TestingConfig
@@ -8,14 +8,11 @@ from app.extensions import cache, db, limiter, migrate
 from app import models
 from app.routes.auth import auth_bp
 from app.routes.gateway import gateway_bp
+from app.routes.health import health_bp
 from app.routes.recipes import recipes_bp
 
 # Read local environment settings during module initialization.
 load_dotenv()
-
-# Group the application's HTTP endpoints under one Flask blueprint.
-routes = Blueprint("routes", __name__)
-
 
 # Build and configure a Flask application for the requested environment.
 def create_app(env_name="development", config_overrides=None, service="all"):
@@ -57,18 +54,9 @@ def create_app(env_name="development", config_overrides=None, service="all"):
     if config_overrides:
         app.config.update(config_overrides)
 
-    # Require an explicit database location for production deployments.
-    if env_name == "production" and not app.config.get("DATABASE"):
+    # Require an explicit database URL for production deployments.
+    if env_name == "production" and not app.config.get("SQLALCHEMY_DATABASE_URI"):
         raise RuntimeError("DATABASE_URL must be set for production.")
-
-    # Resolve relative database paths against the repository root.
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-    database_name = app.config["DATABASE"]
-    if not os.path.isabs(database_name):
-        database_name = os.path.join(project_root, database_name)
-    app.config["DATABASE"] = database_name
-    if not app.config.get("SQLALCHEMY_DATABASE_URI"):
-        app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{database_name}"
 
     # Load the signing key used to create and verify JWTs.
     app.config["JWT_SECRET"] = os.getenv("JWT_SECRET") or app.config.get("JWT_SECRET")
@@ -88,20 +76,22 @@ def create_app(env_name="development", config_overrides=None, service="all"):
         cursor.close()
 
     with app.app_context():
-        event.listen(db.engine, "connect", enable_sqlite_foreign_keys)
+        if db.engine.dialect.name == "sqlite":
+            event.listen(db.engine, "connect", enable_sqlite_foreign_keys)
 
     if service == "all":
         app.register_blueprint(auth_bp, url_prefix="/")
         app.register_blueprint(recipes_bp, url_prefix="/recipes")
-        app.register_blueprint(routes)
     elif service == "gateway":
         app.register_blueprint(gateway_bp)
     elif service == "users":
         app.register_blueprint(auth_bp, url_prefix="/")
-        app.register_blueprint(routes)
     else:
         app.register_blueprint(recipes_bp, url_prefix="/recipes")
-        app.register_blueprint(routes)
+
+    # Gateway has its own health response; other service modes use the shared one.
+    if service != "gateway":
+        app.register_blueprint(health_bp)
 
     @app.errorhandler(429)
     def rate_limit_exceeded(_error):
@@ -113,12 +103,6 @@ def create_app(env_name="development", config_overrides=None, service="all"):
 # Create the ORM tables for local development and tests.
 def init_db():
     db.create_all()
-
-
-@routes.get("/health")
-def health():
-    # Report that the API process is responding.
-    return jsonify({"status": "ok"}), 200
 
 
 # -------------------------

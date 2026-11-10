@@ -1,22 +1,22 @@
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    DATABASE_PATH=/data/recipes.db
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY recipe_api.py init_db.py ./
+COPY app ./app
+COPY migrations ./migrations
+COPY wsgi.py ./
 
 RUN useradd --create-home --shell /usr/sbin/nologin app \
-    && mkdir -p /data \
-    && chown -R app:app /app /data
+    && chown -R app:app /app
 
 USER app
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "python init_db.py && exec gunicorn --bind 0.0.0.0:8000 recipe_api:app"]
+CMD ["sh", "-c", "flask --app wsgi db upgrade && exec gunicorn --bind 0.0.0.0:8000 wsgi:app"]

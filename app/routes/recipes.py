@@ -5,13 +5,13 @@ from functools import wraps
 import httpx
 from flask import Blueprint, current_app, jsonify, request
 
-from app.extensions import cache, db
+from app.extensions import db
 from app.routes.auth import require_auth
 from app.services.recipe_service import (
     create_recipe as create_recipe_service,
     get_recipe_by_id,
     get_recipe_count_info,
-    list_recipes_for_user,
+    get_recipe_page_for_user,
 )
 
 recipes_bp = Blueprint("recipes", __name__)
@@ -52,23 +52,36 @@ def recipe_json(recipe):
     }
 
 
-def invalidate_recipe_list(user_id):
-    cache.delete(f"recipes:user:{user_id}")
-
-
 @recipes_bp.get("/", strict_slashes=False)
 @require_internal_service
 @require_auth
-@cache.cached(
-    timeout=10,
-    make_cache_key=lambda payload: f"recipes:user:{payload['id']}",
-)
 def list_recipes(payload):
-    recipes = [
-        recipe_json(row)
-        for row in list_recipes_for_user(payload["id"])
-    ]
-    return jsonify(recipes), 200
+    try:
+        page = int(request.args.get("page", "1"))
+    except ValueError:
+        return jsonify({"error": "invalid page"}), 400
+    if page < 1:
+        return jsonify({"error": "invalid page"}), 400
+
+    try:
+        per_page = int(request.args.get("per_page", "5"))
+    except ValueError:
+        return jsonify({"error": "invalid per_page"}), 400
+    if not 1 <= per_page <= 50:
+        return jsonify({"error": "invalid per_page"}), 400
+
+    rows, total = get_recipe_page_for_user(payload["id"], page, per_page)
+    recipes = [recipe_json(row) for row in rows]
+    pages = (total + per_page - 1) // per_page
+    return jsonify(
+        {
+            "recipes": recipes,
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "pages": pages,
+        }
+    ), 200
 
 
 @recipes_bp.post("/", strict_slashes=False)
@@ -103,7 +116,6 @@ def create_recipe(payload):
         user_id=payload["id"],
         tag_names=tag_names,
     )
-    invalidate_recipe_list(payload["id"])
     return jsonify(recipe_json(recipe)), 201
 
 
@@ -180,7 +192,6 @@ def update_recipe(payload, recipe_id):
     recipe.cook_time_minutes = cook_time_minutes
     recipe.notes = notes.strip() if notes else None
     db.session.commit()
-    invalidate_recipe_list(payload["id"])
     return jsonify(recipe_json(recipe)), 200
 
 
@@ -195,8 +206,6 @@ def delete_recipe(payload, recipe_id):
     if user_id != recipe.user_id and payload["role"] != "admin":
         return jsonify({"error": "forbidden"}), 403
 
-    owner_id = recipe.user_id
     db.session.delete(recipe)
     db.session.commit()
-    invalidate_recipe_list(owner_id)
     return jsonify({"message": "recipe deleted"}), 200

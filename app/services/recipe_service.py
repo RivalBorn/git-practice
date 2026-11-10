@@ -46,3 +46,15 @@ def get_recipe_by_id(recipe_id):
 
 def list_recipes_for_user(user_id):
     return Recipe.query.filter_by(user_id=user_id).order_by(Recipe.id).all()
+
+
+def get_recipe_page_for_user(user_id, page, per_page):
+    query = Recipe.query.filter_by(user_id=user_id)
+    total = query.count()
+    recipes = (
+        query.order_by(Recipe.id)
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    return recipes, total
